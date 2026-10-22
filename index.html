@@ -2356,11 +2356,16 @@
         }
 
         window.deleteOrder = async function(spkId) {
-            orders = orders.filter(o => o.id !== spkId);
-            await syncToCloud('orders', orders);
-            renderOrdersTable();
-            renderDashboard();
-            showToast("Order Dihapus", `SPK ${spkId} berhasil dihapus.`, "rose");
+    orders = orders.filter(o => o.id !== spkId);
+    
+    // Simpan juga ke localStorage secara lokal agar tab lain langsung membaca data terbaru
+    localStorage.setItem('savelle_orders', JSON.stringify(orders));
+    
+    await syncToCloud('orders', orders);
+    renderOrdersTable();
+    renderDashboard();
+    showToast("Order Dihapus", `SPK ${spkId} berhasil dihapus.`, "rose");
+}
         }
 
         window.sendOrderWhatsAppDirect = function(spkId) {
