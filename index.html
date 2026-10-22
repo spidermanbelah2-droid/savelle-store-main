@@ -2724,548 +2724,497 @@
                     return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
                 } else if (periodFilter === 'lastmonth') {
                     let lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                    let lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-                    return txDate >= lastMonth && txDate <= lastMonthEnd;
-                } else if (periodFilter === 'custom') {
-                    if (!startDateVal || !endDateVal) return true;
-                    let start = new Date(startDateVal);
-                    let end = new Date(endDateVal);
-                    end.setHours(23, 59, 59);
-                    return txDate >= start && txDate <= end;
-                }
-                return true;
-            });
+                let endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+                return txDate >= lastMonth && txDate <= endLastMonth;
+            } else if (periodFilter === 'custom') {
+                if (!startDateVal || !endDateVal) return true;
+                let start = new Date(startDateVal);
+                let end = new Date(endDateVal);
+                end.setHours(23, 59, 59);
+                return txDate >= start && txDate <= end;
+            }
+            return true;
+        });
+    }
+
+    window.renderCashflow = function() {
+        const tbody = document.getElementById('cashflowTableBody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+
+        const filtered = getFilteredCashflow();
+
+        let mandiriBal = 0;
+        let ewalletBal = 0;
+        cashflow.forEach(c => {
+            let diff = c.debit - c.kredit;
+            if (c.account === 'Mandiri') mandiriBal += diff;
+            if (c.account === 'E-Wallet') ewalletBal += diff;
+        });
+
+        const mandiriBalEl = document.getElementById('cashTabMandiriBal');
+        const ewalletBalEl = document.getElementById('cashTabEwalletBal');
+        if(mandiriBalEl) mandiriBalEl.innerText = formatRupiah(mandiriBal);
+        if(ewalletBalEl) ewalletBalEl.innerText = formatRupiah(ewalletBal);
+
+        filtered.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors";
+            tr.innerHTML = `
+                <td class="py-3 px-4 font-bold text-slate-500">${c.date}</td>
+                <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${c.desc}</td>
+                <td class="py-3 px-4"><span class="px-2 py-0.5 rounded font-bold text-[10px] ${c.account === 'Mandiri' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300'}">${c.account}</span></td>
+                <td class="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">${c.cat}</td>
+                <td class="py-3 px-4 text-right font-extrabold text-emerald-600">${c.debit > 0 ? formatRupiah(c.debit) : '-'}</td>
+                <td class="py-3 px-4 text-right font-extrabold text-rose-600">${c.kredit > 0 ? formatRupiah(c.kredit) : '-'}</td>
+                <td class="py-3 px-4 text-right">
+                    <button onclick="deleteCashTx(${c.id})" class="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 rounded text-slate-600 dark:text-slate-300" title="Hapus Transaksi"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        if(filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400 text-xs italic">Tidak ada transaksi pada periode ini.</td></tr>`;
         }
 
-        function renderCashflow() {
-            const tbody = document.getElementById('cashflowTableBody');
-            const periodFilter = document.getElementById('cashFilterPeriod').value;
-            const customBox = document.getElementById('customDateFilterBox');
-            
-            let mandiriTotal = 0;
-            let ewalletTotal = 0;
-            cashflow.forEach(c => {
-                let diff = c.debit - c.kredit;
-                if (c.account === 'Mandiri') mandiriTotal += diff;
-                if (c.account === 'E-Wallet') ewalletTotal += diff;
-            });
+        renderCashCategoryCards(filtered);
+    }
 
-            const mandiriBalEl = document.getElementById('cashTabMandiriBal');
-            const ewalletBalEl = document.getElementById('cashTabEwalletBal');
-            if (mandiriBalEl) mandiriBalEl.innerText = formatRupiah(mandiriTotal);
-            if (ewalletBalEl) ewalletBalEl.innerText = formatRupiah(ewalletTotal);
+    function renderCashCategoryCards(filteredList) {
+        const container = document.getElementById('cashCategorySummaryCards');
+        if(!container) return;
+        container.innerHTML = '';
 
-            if (periodFilter === 'custom') {
-                customBox.classList.remove('hidden');
-                customBox.classList.add('flex');
+        let cats = { 'Beli Bahan': 0, 'Opex': 0, 'Gaji': 0, 'Kas Masuk (DP)': 0 };
+        filteredList.forEach(c => {
+            if(cats[c.cat] !== undefined) {
+                cats[c.cat] += (c.debit > 0 ? c.debit : c.kredit);
             } else {
-                customBox.classList.add('hidden');
-                customBox.classList.remove('flex');
+                cats[c.cat] = (cats[c.cat] || 0) + (c.debit > 0 ? c.debit : c.kredit);
             }
+        });
 
-            const filtered = getFilteredCashflow();
-            
-            const summaryContainer = document.getElementById('cashCategorySummaryCards');
-            if (summaryContainer) {
-                summaryContainer.innerHTML = '';
-                let catTotals = {};
-                filtered.forEach(c => {
-                    let amount = c.debit > 0 ? c.debit : c.kredit;
-                    catTotals[c.cat] = (catTotals[c.cat] || 0) + amount;
-                });
+        Object.keys(cats).forEach(catName => {
+            const card = document.createElement('div');
+            card.className = "bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800";
+            card.innerHTML = `
+                <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">${catName}</span>
+                <div class="text-base font-extrabold text-slate-900 dark:text-slate-100 mt-1">${formatRupiah(cats[catName])}</div>
+            `;
+            container.appendChild(card);
+        });
+    }
 
-                if (Object.keys(catTotals).length === 0) {
-                    summaryContainer.innerHTML = `<div class="col-span-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border text-slate-400 text-xs text-center italic">Belum ada data transaksi pada periode ini.</div>`;
-                } else {
-                    Object.keys(catTotals).forEach(cat => {
-                        let totalVal = catTotals[cat];
-                        let card = document.createElement('div');
-                        card.className = "bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm";
-                        card.innerHTML = `
-                            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate block">Total Kategori: ${cat}</span>
-                            <div class="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 mt-1">${formatRupiah(totalVal)}</div>
-                        `;
-                        summaryContainer.appendChild(card);
-                    });
-                }
-            }
+    window.deleteCashTx = async function(id) {
+        cashflow = cashflow.filter(c => c.id !== id);
+        await syncToCloud('cashflow', cashflow);
+        renderCashflow();
+        renderDashboard();
+        showToast("Transaksi Dihapus", "Data kas berhasil diperbarui.", "rose");
+    }
 
-            if (!tbody) return;
-            tbody.innerHTML = '';
+    window.openAddCashModal = function() {
+        document.getElementById('addCashModal').classList.remove('hidden');
+    }
+    window.closeAddCashModal = function() {
+        document.getElementById('addCashModal').classList.add('hidden');
+    }
 
-            filtered.forEach((c) => {
-                const tr = document.createElement('tr');
-                let badgeAccount = c.account === 'Mandiri' 
-                    ? `<span class="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-bold text-[10px]">Mandiri</span>`
-                    : `<span class="px-2 py-0.5 bg-sky-100 text-sky-800 rounded font-bold text-[10px]">E-Wallet</span>`;
+    window.openTransferModal = function() {
+        document.getElementById('transferModal').classList.remove('hidden');
+    }
+    window.closeTransferModal = function() {
+        document.getElementById('transferModal').classList.add('hidden');
+    }
 
-                tr.innerHTML = `
-                    <td class="py-3 px-4 font-semibold text-slate-600 dark:text-slate-400">${c.date}</td>
-                    <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${c.desc}</td>
-                    <td class="py-3 px-4">${badgeAccount}</td>
-                    <td class="py-3 px-4"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded font-bold text-[10px]">${c.cat}</span></td>
-                    <td class="py-3 px-4 text-right font-bold text-emerald-600">${c.debit > 0 ? formatRupiah(c.debit) : '-'}</td>
-                    <td class="py-3 px-4 text-right font-bold text-rose-600">${c.kredit > 0 ? formatRupiah(c.kredit) : '-'}</td>
-                    <td class="py-3 px-4 text-right">
-                        <button onclick="deleteCashTransaction(${c.id})" class="p-1.5 bg-rose-50 dark:bg-rose-900/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded" title="Hapus Transaksi"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+    window.handleExecuteTransfer = async function(e) {
+        e.preventDefault();
+        const from = document.getElementById('transferFrom').value;
+        const to = document.getElementById('transferTo').value;
+        const amount = parseInt(document.getElementById('transferAmount').value) || 0;
 
-            if(filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400 text-xs italic">Belum ada transaksi kas tercatat.</td></tr>`;
-            }
-        }
-        window.renderCashflow = renderCashflow;
-
-        window.openMonthlyAuditModal = function() {
-            const filtered = getFilteredCashflow();
-            let totalDebit = 0;
-            let totalCredit = 0;
-            let catSummary = {};
-
-            filtered.forEach(c => {
-                totalDebit += c.debit;
-                totalCredit += c.kredit;
-                if (!catSummary[c.cat]) {
-                    catSummary[c.cat] = { count: 0, total: 0 };
-                }
-                catSummary[c.cat].count += 1;
-                catSummary[c.cat].total += (c.debit > 0 ? c.debit : c.kredit);
-            });
-
-            document.getElementById('auditTotalDebit').innerText = formatRupiah(totalDebit);
-            document.getElementById('auditTotalCredit').innerText = formatRupiah(totalCredit);
-            document.getElementById('auditNetCashflow').innerText = formatRupiah(totalDebit - totalCredit);
-            document.getElementById('auditReportPeriodLabel').innerText = `Periode Filter: ${document.getElementById('cashFilterPeriod').value.toUpperCase()}`;
-
-            const tbody = document.getElementById('auditCategoryTableBody');
-            tbody.innerHTML = '';
-
-            Object.keys(catSummary).forEach(cat => {
-                const item = catSummary[cat];
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="py-2.5 px-4 border border-slate-200 font-bold text-slate-900">${cat}</td>
-                    <td class="py-2.5 px-4 border border-slate-200 text-center">${item.count} Transaksi</td>
-                    <td class="py-2.5 px-4 border border-slate-200 text-right font-bold text-slate-800">${formatRupiah(item.total)}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            if (Object.keys(catSummary).length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-slate-400 italic">Tidak ada data transaksi pada periode ini.</td></tr>`;
-            }
-
-            document.getElementById('monthlyAuditModal').classList.remove('hidden');
+        if (from === to) {
+            showToast("Gagal Transfer", "Akun asal dan akun tujuan tidak boleh sama.", "rose");
+            return;
         }
 
-        window.closeMonthlyAuditModal = function() {
-            document.getElementById('monthlyAuditModal').classList.add('hidden');
-        }
+        let txDateNow = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
-        window.deleteCashTransaction = async function(id) {
-            cashflow = cashflow.filter(c => c.id !== id);
-            await syncToCloud('cashflow', cashflow);
-            renderDashboard();
-            renderCashflow();
-            showToast("Transaksi Dihapus", "Catatan kas berhasil dihapus secara real-time.", "rose");
-        }
+        cashflow.unshift({
+            id: cashflow.length + 1,
+            date: txDateNow,
+            desc: `Transfer Keluar ke ${to}`,
+            account: from,
+            cat: "Transfer",
+            debit: 0,
+            kredit: amount
+        });
 
-        function renderMaster() {
-            const tbody = document.getElementById('masterTableBody');
-            if(!tbody) return;
-            tbody.innerHTML = '';
-            masterMaterials.forEach(m => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${m.name}</td>
-                    <td class="py-3 px-4 text-center">
-                        <select onchange="updateMasterMaterial(${m.id}, 'unitType', this.value)" class="border dark:border-slate-700 dark:bg-slate-800 rounded px-1.5 py-1 text-xs font-bold">
-                            <option value="kg" ${m.unitType === 'kg' ? 'selected' : ''}>Per Kg</option>
-                            <option value="meter" ${m.unitType === 'meter' ? 'selected' : ''}>Per Meter</option>
-                        </select>
-                    </td>
-                    <td class="py-3 px-4 text-right font-semibold">Rp <input type="number" value="${m.sellBenchmark || 65000}" onchange="updateMasterMaterial(${m.id}, 'sellBenchmark', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right font-semibold">Rp <input type="number" value="${m.price}" onchange="updateMasterMaterial(${m.id}, 'price', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right font-semibold"><input type="number" step="0.1" value="${m.ratioKgToMeter}" onchange="updateMasterMaterial(${m.id}, 'ratio', this.value)" class="w-16 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"> m</td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.cut}" onchange="updateMasterMaterial(${m.id}, 'cut', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.sew}" onchange="updateMasterMaterial(${m.id}, 'sew', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.qc}" onchange="updateMasterMaterial(${m.id}, 'qc', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.print || 0}" onchange="updateMasterMaterial(${m.id}, 'print', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.sublim || 0}" onchange="updateMasterMaterial(${m.id}, 'sublim', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right">Rp <input type="number" value="${m.bordir || 0}" onchange="updateMasterMaterial(${m.id}, 'bordir', this.value)" class="w-20 text-right border dark:border-slate-700 dark:bg-slate-800 rounded px-1"></td>
-                    <td class="py-3 px-4 text-right"><button onclick="showToast('Master Updated', 'Data kain disave otomatis')" class="text-xs text-brand-600 font-bold">Simpan</button></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
+        cashflow.unshift({
+            id: cashflow.length + 2,
+            date: txDateNow,
+            desc: `Transfer Masuk dari ${from}`,
+            account: to,
+            cat: "Transfer",
+            debit: amount,
+            kredit: 0
+        });
 
-        function renderSizeChartsTable() {
-            const tbody = document.getElementById('sizeChartTableBody');
-            if(!tbody) return;
-            tbody.innerHTML = '';
-            Object.keys(sizeCharts).forEach(prodName => {
-                const chart = sizeCharts[prodName];
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${prodName}</td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.S || 1.2}" onchange="updateSizeChartVal('${prodName}', 'S', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.M || 1.3}" onchange="updateSizeChartVal('${prodName}', 'M', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.L || 1.4}" onchange="updateSizeChartVal('${prodName}', 'L', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.XL || 1.5}" onchange="updateSizeChartVal('${prodName}', 'XL', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.XXL || 1.6}" onchange="updateSizeChartVal('${prodName}', 'XXL', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.XXXL || 1.8}" onchange="updateSizeChartVal('${prodName}', 'XXXL', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-center"><input type="number" step="0.1" value="${chart.Custom || 2.0}" onchange="updateSizeChartVal('${prodName}', 'Custom', this.value)" class="w-14 text-center border dark:border-slate-700 dark:bg-slate-800 rounded px-1 font-semibold"></td>
-                    <td class="py-3 px-4 text-right"><button onclick="showToast('Size Chart Saved', 'Konsumsi kain ${prodName} diperbarui')" class="text-xs text-brand-600 font-bold">Simpan</button></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
+        await syncToCloud('cashflow', cashflow);
+        closeTransferModal();
+        renderCashflow();
+        renderDashboard();
+        showToast("Transfer Berhasil", `Dana sebesar ${formatRupiah(amount)} berhasil dipindahkan dari ${from} ke ${to}.`);
+    }
 
-        window.updateMasterMaterial = function(id, field, val) {
-            const mat = masterMaterials.find(x => x.id === id);
-            if(mat) {
-                if(field === 'unitType') mat.unitType = val;
-                if(field === 'sellBenchmark') mat.sellBenchmark = parseFloat(val) || 65000;
-                if(field === 'price') mat.price = parseFloat(val) || 0;
-                if(field === 'ratio') mat.ratioKgToMeter = parseFloat(val) || 3.5;
-                if(field === 'cut') mat.cut = parseFloat(val) || 0;
-                if(field === 'sew') mat.sew = parseFloat(val) || 0;
-                if(field === 'qc') mat.qc = parseFloat(val) || 0;
-                if(field === 'print') mat.print = parseFloat(val) || 0;
-                if(field === 'sublim') mat.sublim = parseFloat(val) || 0;
-                if(field === 'bordir') mat.bordir = parseFloat(val) || 0;
-                populateMasterDropdowns();
-                showToast("Auto Save", "Master kain & satuan berhasil diperbarui!");
+    window.handleSaveCashTransaction = async function(e) {
+        e.preventDefault();
+        const dateStr = document.getElementById('cashTxDate').value.replace('T', ' ');
+        const desc = document.getElementById('cashDesc').value;
+        const account = document.getElementById('cashAccount').value;
+        const cat = document.getElementById('cashCategory').value;
+        const debit = parseInt(document.getElementById('cashDebit').value) || 0;
+        const kredit = parseInt(document.getElementById('cashCredit').value) || 0;
+
+        const newTx = {
+            id: cashflow.length + 1,
+            date: dateStr,
+            desc,
+            account,
+            cat,
+            debit,
+            kredit
+        };
+
+        cashflow.unshift(newTx);
+
+        if (cat === 'Beli Bahan') {
+            const restockName = document.getElementById('restockItemName').value;
+            const addQty = parseFloat(document.getElementById('restockAddQty').value) || 0;
+            let invItem = inventory.find(i => i.name.toLowerCase() === restockName.toLowerCase());
+            if (invItem) {
+                invItem.qty = Math.round((invItem.qty + addQty) * 10) / 10;
+                await syncToCloud('inventory', inventory);
             }
         }
 
-        window.updateSizeChartVal = function(prodName, sizeKey, val) {
-            if(sizeCharts[prodName]) {
-                sizeCharts[prodName][sizeKey] = parseFloat(val) || 1.0;
-                showToast("Size Chart Saved", `Konsumsi ${prodName} (${sizeKey}) diperbarui!`);
+        await syncToCloud('cashflow', cashflow);
+        closeAddCashModal();
+        renderCashflow();
+        renderDashboard();
+        showToast("Transaksi Dicatat", "Arus kas berhasil diperbarui.");
+    }
+
+    window.openMonthlyAuditModal = function() {
+        const filtered = getFilteredCashflow();
+        let totalDebit = 0;
+        let totalCredit = 0;
+        let catMap = {};
+
+        filtered.forEach(c => {
+            totalDebit += c.debit;
+            totalCredit += c.kredit;
+            if(!catMap[c.cat]) {
+                catMap[c.cat] = { count: 0, total: 0 };
             }
+            catMap[c.cat].count += 1;
+            catMap[c.cat].total += (c.debit > 0 ? c.debit : c.kredit);
+        });
+
+        document.getElementById('auditTotalDebit').innerText = formatRupiah(totalDebit);
+        document.getElementById('auditTotalCredit').innerText = formatRupiah(totalCredit);
+        document.getElementById('auditNetCashflow').innerText = formatRupiah(totalDebit - totalCredit);
+
+        const tbody = document.getElementById('auditCategoryTableBody');
+        tbody.innerHTML = '';
+        Object.keys(catMap).forEach(cat => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="py-2 px-4 border border-slate-200 font-bold">${cat}</td>
+                <td class="py-2 px-4 border border-slate-200 text-center">${catMap[cat].count} Transaksi</td>
+                <td class="py-2 px-4 border border-slate-200 text-right font-bold">${formatRupiah(catMap[cat].total)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('monthlyAuditModal').classList.remove('hidden');
+    }
+    window.closeMonthlyAuditModal = function() {
+        document.getElementById('monthlyAuditModal').classList.add('hidden');
+    }
+
+    window.openAddManualSalaryModal = function() {
+        document.getElementById('manualSalaryModal').classList.remove('hidden');
+    }
+    window.closeManualSalaryModal = function() {
+        document.getElementById('manualSalaryModal').classList.add('hidden');
+    }
+
+    window.handleSaveManualSalary = async function(e) {
+        e.preventDefault();
+        const name = document.getElementById('manualWorkerName').value;
+        const role = document.getElementById('manualWorkerRole').value;
+        const amount = parseInt(document.getElementById('manualWorkerAmount').value) || 0;
+        const phone = document.getElementById('manualWorkerPhone').value;
+
+        manualSalaries.push({ name, role, amount, phone });
+        closeManualSalaryModal();
+        renderPayroll();
+        renderDashboard();
+        showToast("Gaji Manual Disimpan", `Data gaji untuk ${name} berhasil ditambahkan.`);
+    }
+
+    window.openAddStockModal = function() {
+        switchTab('master');
+        openAddMasterMaterialModal();
+    }
+
+    window.openAddMasterMaterialModal = function() {
+        document.getElementById('addMasterMaterialModal').classList.remove('hidden');
+    }
+    window.closeAddMasterMaterialModal = function() {
+        document.getElementById('addMasterMaterialModal').classList.add('hidden');
+    }
+
+    window.handleSaveNewMaterial = async function(e) {
+        e.preventDefault();
+        const name = document.getElementById('newMatName').value;
+        const unitType = document.getElementById('newMatUnitType').value;
+        const sellBenchmark = parseInt(document.getElementById('newMatSellBenchmark').value) || 65000;
+        const price = parseInt(document.getElementById('newMatPrice').value) || 85000;
+        const ratioKgToMeter = parseFloat(document.getElementById('newMatRatio').value) || 3.5;
+        const cut = parseInt(document.getElementById('newMatCut').value) || 3500;
+        const sew = parseInt(document.getElementById('newMatSew').value) || 12000;
+        const qc = parseInt(document.getElementById('newMatQc').value) || 2000;
+        const print = parseInt(document.getElementById('newMatPrint').value) || 12000;
+
+        masterMaterials.push({
+            id: masterMaterials.length + 1,
+            name, unitType, sellBenchmark, price, ratioKgToMeter, cut, sew, qc, print, sublim: 15000, bordir: 15000
+        });
+
+        inventory.push({
+            id: inventory.length + 1,
+            name,
+            category: 'Kain',
+            qty: 0,
+            unit: unitType === 'meter' ? 'Meter' : 'Kg',
+            status: 'safe'
+        });
+
+        await syncToCloud('inventory', inventory);
+        closeAddMasterMaterialModal();
+        populateMasterDropdowns();
+        renderMaster();
+        renderInventory();
+        showToast("Master Kain Disimpan", `Jenis kain ${name} berhasil ditambahkan.`);
+    }
+
+    window.openAddMasterClothingModal = function() {
+        document.getElementById('addMasterClothingModal').classList.remove('hidden');
+    }
+    window.closeAddMasterClothingModal = function() {
+        document.getElementById('addMasterClothingModal').classList.add('hidden');
+    }
+
+    window.handleSaveNewClothing = function(e) {
+        e.preventDefault();
+        const name = document.getElementById('newClothName').value;
+        const s = parseFloat(document.getElementById('newClothS').value) || 1.2;
+        const m = parseFloat(document.getElementById('newClothM').value) || 1.3;
+        const l = parseFloat(document.getElementById('newClothL').value) || 1.4;
+        const xl = parseFloat(document.getElementById('newClothXL').value) || 1.5;
+        const xxl = parseFloat(document.getElementById('newClothXXL').value) || 1.6;
+        const xxxl = parseFloat(document.getElementById('newClothXXXL').value) || 1.8;
+        const custom = parseFloat(document.getElementById('newClothCustom').value) || 2.0;
+
+        sizeCharts[name] = { S: s, M: m, L: l, XL: xl, XXL: xxl, XXXL: xxxl, Custom: custom };
+
+        closeAddMasterClothingModal();
+        populateClothingTypeDropdown();
+        renderSizeChartsTable();
+        showToast("Jenis Pakaian Disimpan", `Size chart ${name} berhasil ditambahkan.`);
+    }
+
+    window.renderMaster = function() {
+        const tbody = document.getElementById('masterTableBody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        masterMaterials.forEach(m => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors";
+            tr.innerHTML = `
+                <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${m.name}</td>
+                <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded font-bold">${m.unitType === 'meter' ? 'Per Meter' : 'Per Kg'}</span></td>
+                <td class="py-3 px-4 text-right font-semibold">${formatRupiah(m.sellBenchmark)}</td>
+                <td class="py-3 px-4 text-right font-semibold text-brand-600">${formatRupiah(m.price)}</td>
+                <td class="py-3 px-4 text-right font-semibold">${m.ratioKgToMeter} m</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.cut)}</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.sew)}</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.qc)}</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.print)}</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.sublim || 15000)}</td>
+                <td class="py-3 px-4 text-right">${formatRupiah(m.bordir || 15000)}</td>
+                <td class="py-3 px-4 text-right">
+                    <button onclick="deleteMasterMaterial('${m.name}')" class="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 rounded text-slate-600 dark:text-slate-300" title="Hapus"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.deleteMasterMaterial = function(name) {
+        masterMaterials = masterMaterials.filter(m => m.name !== name);
+        renderMaster();
+        populateMasterDropdowns();
+        showToast("Master Kain Dihapus", `Jenis kain ${name} dihapus dari master.`, "rose");
+    }
+
+    window.renderSizeChartsTable = function() {
+        const tbody = document.getElementById('sizeChartTableBody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        Object.keys(sizeCharts).forEach(cloth => {
+            const sc = sizeCharts[cloth];
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors";
+            tr.innerHTML = `
+                <td class="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">${cloth}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.S || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.M || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.L || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.XL || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.XXL || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.XXXL || '-'}</td>
+                <td class="py-3 px-4 text-center font-semibold">${sc.Custom || '-'}</td>
+                <td class="py-3 px-4 text-right">
+                    <button onclick="deleteSizeChart('${cloth}')" class="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 rounded text-slate-600 dark:text-slate-300" title="Hapus"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.deleteSizeChart = function(clothName) {
+        delete sizeCharts[clothName];
+        renderSizeChartsTable();
+        populateClothingTypeDropdown();
+        showToast("Size Chart Dihapus", `Pakaian ${clothName} berhasil dihapus.`, "rose");
+    }
+
+    window.openCloudAccessModal = function() {
+        const urlInput = document.getElementById('currentAppUrlInput');
+        if(urlInput) urlInput.value = window.location.href;
+        document.getElementById('cloudAccessModal').classList.remove('hidden');
+    }
+    window.closeCloudAccessModal = function() {
+        document.getElementById('cloudAccessModal').classList.add('hidden');
+    }
+
+    window.copyAppUrl = function() {
+        const urlInput = document.getElementById('currentAppUrlInput');
+        urlInput.select();
+        urlInput.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(urlInput.value);
+        showToast("Link Disalin", "URL workspace berhasil disalin ke clipboard!");
+    }
+
+    window.openAppInNewTab = function() {
+        window.open(window.location.href, '_blank');
+    }
+
+    window.shareLinkViaWhatsApp = function() {
+        const url = window.location.href;
+        const text = `Halo Pak Bos Ravi Baik,\n\nBerikut link akses workspace Savelle Store (Multi-Device Cloud Sync):\n${url}\n\nSilakan buka untuk memantau produksi, kas, dan pesanan secara real-time!`;
+        window.open(`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    window.openNewOrderModal = function() {
+        document.getElementById('orderModalTitle').innerText = "Buat Order / Surat Perintah Kerja (SPK) Baru - Savelle Store";
+        document.getElementById('nextSpkIdBadge').innerText = `SPK-2026-00${orders.length + 1}`;
+        document.getElementById('editingSpkId').value = "";
+        document.getElementById('spkForm').reset();
+        
+        const todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById('inputOrderDate').value = todayStr;
+        let d = new Date();
+        d.setDate(d.getDate() + 14);
+        document.getElementById('inputDeadline').value = d.toISOString().split('T')[0];
+        
+        uploadedDesignDataUrl = "";
+        document.getElementById('dropZonePrompt').classList.remove('hidden');
+        document.getElementById('designPreviewContainer').classList.add('hidden');
+
+        populateMasterDropdowns();
+        recalculateOrderForm();
+        document.getElementById('newOrderModal').classList.remove('hidden');
+    }
+    window.closeNewOrderModal = function() {
+        document.getElementById('newOrderModal').classList.add('hidden');
+    }
+
+    window.openPrintModal = function(spkId) {
+        const o = orders.find(x => x.id === spkId);
+        if(!o) return;
+
+        document.getElementById('printSpkCode').innerText = o.id;
+        document.getElementById('printClient').innerText = o.client;
+        document.getElementById('printPhone').innerText = o.phone;
+        document.getElementById('printAddress').innerText = o.address || '-';
+        document.getElementById('printProduct').innerText = `${o.product} (${o.qty} Pcs)`;
+        document.getElementById('printMaterial').innerText = o.material;
+        document.getElementById('printFabricColor').innerText = o.fabricColor || 'Hitam';
+        
+        document.getElementById('printQty').innerText = `${o.qty} Pcs`;
+        document.getElementById('pS').innerText = o.sizes.s || 0;
+        document.getElementById('pM').innerText = o.sizes.m || 0;
+        document.getElementById('pL').innerText = o.sizes.l || 0;
+        document.getElementById('pXL').innerText = o.sizes.xl || 0;
+        document.getElementById('pXXL').innerText = o.sizes.xxl || 0;
+        document.getElementById('pXXXL').innerText = o.sizes.xxxl || 0;
+        document.getElementById('pCustom').innerText = o.sizes.custom || 0;
+        document.getElementById('pTotal').innerText = o.qty;
+
+        document.getElementById('printCogsPerPcs').innerText = formatRupiah(Math.round(o.cogsPerPcs || 0));
+        document.getElementById('printCogs').innerText = formatRupiah(Math.round(o.totalCogs || 0));
+        document.getElementById('printRevenue').innerText = formatRupiah(o.totalRevenue || 0);
+        document.getElementById('printNetMargin').innerText = formatRupiah(Math.round(o.netMargin || 0));
+
+        currentSelectedSpkForWhatsApp = o;
+        document.getElementById('printSpkModal').classList.remove('hidden');
+    }
+    window.closePrintModal = function() {
+        document.getElementById('printSpkModal').classList.add('hidden');
+    }
+
+    window.sendOrderWhatsAppSummary = function() {
+        const o = currentSelectedSpkForWhatsApp;
+        if(!o) return;
+        let sisaTagihan = o.totalRevenue - (o.dpPrice || 0);
+        const text = `Halo *${o.client}*,\n\n` +
+                     `Berikut ringkasan SPK *Savelle Store* (Not For Everyone):\n` +
+                     `- No SPK: *${o.id}*\n` +
+                     `- Produk: *${o.product}* (${o.qty} Pcs)\n` +
+                     `- Bahan / Warna: *${o.material}* (${o.fabricColor || 'Hitam'})\n` +
+                     `- Total Tagihan: *${formatRupiah(o.totalRevenue)}*\n` +
+                     `- Sudah Dibayar (DP): *${formatRupiah(o.dpPrice || 0)}*\n` +
+                     `- Kekurangan: *${formatRupiah(sisaTagihan)}*\n` +
+                     `- Target Selesai: *${o.deadline}*\n\n` +
+                     `Terima kasih telah mempercayakan produksi konveksi kepada kami!\n\n` +
+                     `Konfirmasi Admin WA: 085212627456`;
+
+        let targetPhone = o.phone ? o.phone.replace(/\D/g, '') : ADMIN_WHATSAPP_NUMBER;
+        if (targetPhone.startsWith('0')) {
+            targetPhone = '62' + targetPhone.substring(1);
+        } else if (!targetPhone.startsWith('62')) {
+            targetPhone = '62' + targetPhone;
         }
 
-        window.openAddMasterMaterialModal = function() {
-            document.getElementById('addMasterMaterialModal').classList.remove('hidden');
-        }
-        window.closeAddMasterMaterialModal = function() {
-            document.getElementById('addMasterMaterialModal').classList.add('hidden');
-        }
-        window.handleSaveNewMaterial = async function(e) {
-            e.preventDefault();
-            const name = document.getElementById('newMatName').value.trim();
-            const unitType = document.getElementById('newMatUnitType').value;
-            const sellBenchmark = parseFloat(document.getElementById('newMatSellBenchmark').value) || 65000;
-            const price = parseFloat(document.getElementById('newMatPrice').value) || 0;
-            const ratioKgToMeter = parseFloat(document.getElementById('newMatRatio').value) || 3.5;
-            const cut = parseFloat(document.getElementById('newMatCut').value) || 3500;
-            const sew = parseFloat(document.getElementById('newMatSew').value) || 12000;
-            const qc = parseFloat(document.getElementById('newMatQc').value) || 2000;
-            const print = parseFloat(document.getElementById('newMatPrint').value) || 12000;
-
-            masterMaterials.push({
-                id: masterMaterials.length + 1,
-                name, unitType, sellBenchmark, price, ratioKgToMeter, cut, sew, qc, print, sublim: 15000, bordir: 15000
-            });
-
-            inventory.push({
-                id: inventory.length + 1,
-                name,
-                category: "Kain",
-                qty: 0,
-                unit: unitType === 'meter' ? 'Meter' : 'Kg',
-                status: "safe"
-            });
-
-            await syncToCloud('inventory', inventory);
-            closeAddMasterMaterialModal();
-            populateMasterDropdowns();
-            renderMaster();
-            renderInventory();
-            populateRestockItemDropdown();
-            showToast("Master Kain Ditambahkan", `Jenis kain "${name}" berhasil ditambahkan.`);
-        }
-
-        window.openAddMasterClothingModal = function() {
-            document.getElementById('addMasterClothingModal').classList.remove('hidden');
-        }
-        window.closeAddMasterClothingModal = function() {
-            document.getElementById('addMasterClothingModal').classList.add('hidden');
-        }
-
-        window.openAddStockModal = function() {
-            openAddCashModal();
-            document.getElementById('cashCategory').value = 'Beli Bahan';
-            toggleCashCategoryFields();
-        }
-
-        window.handleSaveNewClothing = function(e) {
-            e.preventDefault();
-            const name = document.getElementById('newClothName').value.trim();
-            sizeCharts[name] = {
-                S: parseFloat(document.getElementById('newClothS').value) || 1.2,
-                M: parseFloat(document.getElementById('newClothM').value) || 1.3,
-                L: parseFloat(document.getElementById('newClothL').value) || 1.4,
-                XL: parseFloat(document.getElementById('newClothXL').value) || 1.5,
-                XXL: parseFloat(document.getElementById('newClothXXL').value) || 1.6,
-                XXXL: parseFloat(document.getElementById('newClothXXXL').value) || 1.8,
-                Custom: parseFloat(document.getElementById('newClothCustom').value) || 2.0
-            };
-            closeAddMasterClothingModal();
-            populateClothingTypeDropdown();
-            renderSizeChartsTable();
-            showToast("Jenis Pakaian Ditambahkan", `Pakaian "${name}" berhasil ditambahkan.`);
-        }
-
-        window.openNewOrderModal = function() {
-            document.getElementById('orderModalTitle').innerText = "Buat Order / Surat Perintah Kerja (SPK) Baru - Savelle Store";
-            document.getElementById('nextSpkIdBadge').innerText = `SPK-2026-00${orders.length + 1}`;
-            document.getElementById('editingSpkId').value = "";
-            document.getElementById('spkForm').reset();
-            
-            const todayStr = new Date().toISOString().split('T')[0];
-            document.getElementById('inputOrderDate').value = todayStr;
-            let d = new Date();
-            d.setDate(d.getDate() + 14);
-            document.getElementById('inputDeadline').value = d.toISOString().split('T')[0];
-
-            uploadedDesignDataUrl = "";
-            document.getElementById('dropZonePrompt').classList.remove('hidden');
-            document.getElementById('designPreviewContainer').classList.add('hidden');
-
-            populateMasterDropdowns();
-            recalculateOrderForm();
-            document.getElementById('newOrderModal').classList.remove('hidden');
-        }
-
-        window.closeNewOrderModal = function() {
-            document.getElementById('newOrderModal').classList.add('hidden');
-        }
-
-        window.openPrintModal = function(spkId) {
-            const o = orders.find(x => x.id === spkId);
-            if (!o) return;
-            currentSelectedSpkForWhatsApp = o;
-
-            document.getElementById('printSpkCode').innerText = o.id;
-            document.getElementById('printClient').innerText = o.client;
-            document.getElementById('printPhone').innerText = o.phone;
-            document.getElementById('printAddress').innerText = o.address || '-';
-            document.getElementById('printProduct').innerText = o.product;
-            document.getElementById('printMaterial').innerText = o.material;
-            document.getElementById('printFabricColor').innerText = o.fabricColor || 'Hitam';
-            document.getElementById('printQty').innerText = `${o.qty} Pcs`;
-
-            document.getElementById('pS').innerText = o.sizes.s || 0;
-            document.getElementById('pM').innerText = o.sizes.m || 0;
-            document.getElementById('pL').innerText = o.sizes.l || 0;
-            document.getElementById('pXL').innerText = o.sizes.xl || 0;
-            document.getElementById('pXXL').innerText = o.sizes.xxl || 0;
-            document.getElementById('pXXXL').innerText = o.sizes.xxxl || 0;
-            document.getElementById('pCustom').innerText = o.sizes.custom || 0;
-            document.getElementById('pTotal').innerText = o.qty;
-
-            document.getElementById('printCogsPerPcs').innerText = formatRupiah(Math.round(o.cogsPerPcs || 0));
-            document.getElementById('printCogs').innerText = formatRupiah(Math.round(o.totalCogs || 0));
-            document.getElementById('printRevenue').innerText = formatRupiah(o.totalRevenue || 0);
-            document.getElementById('printNetMargin').innerText = formatRupiah(Math.round(o.netMargin || 0));
-
-            document.getElementById('printSpkModal').classList.remove('hidden');
-        }
-
-        window.closePrintModal = function() {
-            document.getElementById('printSpkModal').classList.add('hidden');
-        }
-
-        window.sendOrderWhatsAppSummary = function() {
-            const o = currentSelectedSpkForWhatsApp;
-            if(!o) return;
-            const text = `Halo *${o.client}*,\n\n` +
-                         `Berikut rekonfirmasi Surat Perintah Kerja (SPK) *${o.id}* di Savelle Store (Not For Everyone):\n` +
-                         `- Produk: *${o.product}* (${o.fabricColor || 'Hitam'})\n` +
-                         `- Bahan: ${o.material}\n` +
-                         `- Total Qty: *${o.qty} Pcs*\n` +
-                         `- Total Tagihan: *${formatRupiah(o.totalRevenue)}*\n` +
-                         `- Sisa Pelunasan: *${formatRupiah(o.totalRevenue - (o.dpPrice || 0))}*\n` +
-                         `- Target Selesai: *${o.deadline}*\n\n` +
-                         `Terima kasih atas kepercayaan Anda.\n` +
-                         `Admin WA: 085212627456`;
-
-            let phone = o.phone ? o.phone.replace(/\D/g, '') : ADMIN_WHATSAPP_NUMBER;
-            if (phone.startsWith('0')) {
-                phone = '62' + phone.substring(1);
-            } else if (!phone.startsWith('62')) {
-                phone = '62' + phone;
-            }
-            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-        }
-
-        window.openTransferModal = function() {
-            document.getElementById('transferModal').classList.remove('hidden');
-        }
-        window.closeTransferModal = function() {
-            document.getElementById('transferModal').classList.add('hidden');
-        }
-        window.handleExecuteTransfer = async function(e) {
-            e.preventDefault();
-            const from = document.getElementById('transferFrom').value;
-            const to = document.getElementById('transferTo').value;
-            const amount = parseInt(document.getElementById('transferAmount').value) || 0;
-            if(from === to) {
-                showToast("Transfer Gagal", "Akun asal dan tujuan tidak boleh sama.", "rose");
-                return;
-            }
-
-            let txDateNow = new Date().toISOString().replace('T', ' ').substring(0, 16);
-            cashflow.unshift({
-                id: cashflow.length + 1,
-                date: txDateNow,
-                desc: `Transfer Saldo dari ${from} ke ${to}`,
-                account: from,
-                cat: "Transfer",
-                debit: 0,
-                kredit: amount
-            });
-            cashflow.unshift({
-                id: cashflow.length + 1,
-                date: txDateNow,
-                desc: `Terima Transfer Saldo dari ${from}`,
-                account: to,
-                cat: "Transfer",
-                debit: amount,
-                kredit: 0
-            });
-
-            await syncToCloud('cashflow', cashflow);
-            closeTransferModal();
-            renderDashboard();
-            renderCashflow();
-            showToast("Transfer Berhasil", `Dana sebesar ${formatRupiah(amount)} berhasil ditransfer dari ${from} ke ${to}.`);
-        }
-
-        window.openAddManualSalaryModal = function() {
-            document.getElementById('manualSalaryModal').classList.remove('hidden');
-        }
-        window.closeManualSalaryModal = function() {
-            document.getElementById('manualSalaryModal').classList.add('hidden');
-        }
-        window.handleSaveManualSalary = async function(e) {
-            e.preventDefault();
-            const name = document.getElementById('manualWorkerName').value;
-            const role = document.getElementById('manualWorkerRole').value;
-            const amount = parseInt(document.getElementById('manualWorkerAmount').value) || 0;
-            const phone = document.getElementById('manualWorkerPhone').value;
-
-            manualSalaries.push({ name, role, amount, phone });
-            closeAddManualSalaryModal();
-            renderPayroll();
-            renderDashboard();
-            showToast("Gaji Pekerja Ditambahkan", `Gaji ${name} (${role}) berhasil dicatat.`);
-        }
-
-        window.openAddCashModal = function() {
-            const cashTxDateEl = document.getElementById('cashTxDate');
-            if (cashTxDateEl) {
-                cashTxDateEl.value = new Date().toISOString().slice(0, 16);
-            }
-            populateRestockItemDropdown();
-            document.getElementById('addCashModal').classList.remove('hidden');
-            toggleCashCategoryFields();
-        }
-        window.closeAddCashModal = function() {
-            document.getElementById('addCashModal').classList.add('hidden');
-        }
-
-        window.toggleCashCategoryFields = function() {
-            const cat = document.getElementById('cashCategory').value;
-            const restockSec = document.getElementById('fabricRestockSection');
-            const debitInput = document.getElementById('cashDebit');
-            const kreditInput = document.getElementById('cashCredit');
-
-            if (cat === 'Beli Bahan') {
-                populateRestockItemDropdown();
-                restockSec.classList.remove('hidden');
-                kreditInput.removeAttribute('readonly');
-                debitInput.value = 0;
-            } else if (cat === 'Kas Masuk (Lain)') {
-                restockSec.classList.add('hidden');
-                debitInput.removeAttribute('readonly');
-                kreditInput.value = 0;
-            } else {
-                restockSec.classList.add('hidden');
-                kreditInput.removeAttribute('readonly');
-                debitInput.value = 0;
-            }
-        }
-
-        window.handleSaveCashTransaction = async function(e) {
-            e.preventDefault();
-            const rawDate = document.getElementById('cashTxDate').value || new Date().toISOString();
-            const formattedDate = rawDate.replace('T', ' ').substring(0, 16);
-            const desc = document.getElementById('cashDesc').value;
-            const account = document.getElementById('cashAccount').value;
-            const cat = document.getElementById('cashCategory').value;
-            const debit = parseInt(document.getElementById('cashDebit').value) || 0;
-            let kredit = parseInt(document.getElementById('cashCredit').value) || 0;
-
-            if (cat === 'Beli Bahan') {
-                const restockName = document.getElementById('restockItemName').value;
-                const addQty = parseFloat(document.getElementById('restockAddQty').value) || 0;
-                let invItem = inventory.find(i => i.name.toLowerCase() === restockName.toLowerCase());
-                if (invItem) {
-                    invItem.qty = Math.round((invItem.qty + addQty) * 10) / 10;
-                    await syncToCloud('inventory', inventory);
-                    renderInventory();
-                }
-            }
-
-            cashflow.unshift({
-                id: cashflow.length + 1,
-                date: formattedDate,
-                desc,
-                account,
-                cat,
-                debit,
-                kredit
-            });
-
-            await syncToCloud('cashflow', cashflow);
-            closeAddCashModal();
-            renderDashboard();
-            renderCashflow();
-            showToast("Transaksi Disimpan", "Catatan kas berhasil diperbarui.");
-        }
-
-        window.openCloudAccessModal = function() {
-            let safeUrl = window.location.href.split('#')[0];
-            document.getElementById('currentAppUrlInput').value = safeUrl;
-            document.getElementById('cloudAccessModal').classList.remove('hidden');
-        }
-        window.closeCloudAccessModal = function() {
-            document.getElementById('cloudAccessModal').classList.add('hidden');
-        }
-        window.copyAppUrl = function() {
-            const input = document.getElementById('currentAppUrlInput');
-            input.select();
-            document.execCommand('copy');
-            showToast("Link Disalin", "URL aplikasi berhasil disalin ke clipboard.");
-        }
-
-        window.openAppInNewTab = function() {
-            let safeUrl = window.location.href.split('#')[0];
-            window.open(safeUrl, '_blank');
-        }
-
-        window.shareLinkViaWhatsApp = function() {
-            let safeUrl = window.location.href.split('#')[0];
-            const text = `Halo Admin Savelle Store,\n\nBerikut adalah link akses workspace ERP & Konveksi saya:\n${safeUrl}\n\nSilakan buka link ini di HP Anda untuk mengelola SPK dan Kas secara real-time!`;
-            let waUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
-            window.open(waUrl, '_blank');
-        }
+        let waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, '_blank');
+        showToast("WhatsApp Terkirim", `Ringkasan SPK ${o.id} berhasil dikirim ke WhatsApp klien.`);
+    }
     </script>
 </body>
 </html>
