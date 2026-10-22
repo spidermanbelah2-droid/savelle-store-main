@@ -1568,18 +1568,36 @@
             }, (error) => console.error("Cashflow listener error:", error));
         }
 
-        async function syncToCloud(collectionName, dataList) {
-            if (!db || !currentUser) return;
-            try {
-                for (let item of dataList) {
-                    let docId = String(item.id || item.code || crypto.randomUUID());
-                    const docRef = doc(db, 'artifacts', activeAppId, 'public', 'data', collectionName, docId);
-                    await setDoc(docRef, item);
-                }
-            } catch (e) {
-                console.error("Cloud sync error:", e);
+      async function syncToCloud(collectionName, dataList) {
+    if (!db || !currentUser) return;
+    try {
+        // 1. Ambil semua dokumen yang ada di cloud saat ini untuk koleksi tersebut
+        const querySnapshot = await getDocs(collection(db, 'artifacts', activeAppId, 'public', 'data', collectionName));
+        const cloudIds = new Set();
+        querySnapshot.forEach(docSnap => {
+            cloudIds.add(docSnap.id);
+        });
+
+        // 2. Tentukan ID apa saja yang masih ada di dataList lokal yang baru
+        const localIds = new Set();
+        for (let item of dataList) {
+            let docId = String(item.id || item.code || crypto.randomUUID());
+            localIds.add(docId);
+            const docRef = doc(db, 'artifacts', activeAppId, 'public', 'data', collectionName, docId);
+            await setDoc(docRef, item);
+        }
+
+        // 3. Hapus dokumen di cloud yang sudah tidak ada di list lokal (artinya sudah dihapus oleh user)
+        for (let cloudId of cloudIds) {
+            if (!localIds.has(cloudId)) {
+                const docRef = doc(db, 'artifacts', activeAppId, 'public', 'data', collectionName, cloudId);
+                await deleteDoc(docRef);
             }
         }
+    } catch (e) {
+        console.error("Cloud sync error:", e);
+    }
+}
 
         function refreshAllViews() {
             renderDashboard();
